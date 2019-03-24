@@ -1,8 +1,11 @@
+import io
 import cv2
 import numpy
 import socket
 import struct
 import pickle
+import base64
+from PIL import Image
 from time import sleep
 from sys import platform
 from threading import Thread
@@ -35,7 +38,7 @@ def CombineStreams(output_size, columns, rows, streams):
         else:
             combinedImg = vstack((combinedImg, combinedRow))
 
-    return cv2.resize(combinedImg, output_size)
+    return cv2.resize(combinedImg, (output_size[1], output_size[0]))
 
 class ReadWebcamOverIP(Thread):
     def __init__(self, output_size, ip_port):
@@ -59,7 +62,7 @@ class ReadWebcamOverIP(Thread):
     def read(self): 
         sleep(0.0005) # important for resource conservation
         if self.imgToShow.shape[0] != self.output_size[0] or self.imgToShow.shape[1] != self.output_size[1]: 
-            return cv2.resize(self.imgToShow, self.output_size)
+            return cv2.resize(self.imgToShow, (self.output_size[1], self.output_size[0]))
         else: return self.imgToShow
 
     def stop(self): self.running = False
@@ -177,8 +180,13 @@ class RTSP(Thread):
                     for client in rtsp_clients:
                         try:
                             frame = CombineStreams(self.output_size, client[2][0], client[2][1], self.streams)
-                            data = pickle.dumps(frame)
-                            client[0].sendall(struct.pack("L", len(data))+data)
+                            
+                            im = Image.fromarray(frame.astype("uint8"))
+                            rawBytes = io.BytesIO()
+                            im.save(rawBytes, "PNG")
+                            rawBytes.seek(0)  # return to the start of the file
+
+                            client[0].sendall(struct.pack("L", rawBytes.getbuffer().nbytes)+rawBytes.getvalue())
                         except Exception as err:
                             rtsp_clients.remove(client)
                             print ('Connection dropped: ', client[1], err)
