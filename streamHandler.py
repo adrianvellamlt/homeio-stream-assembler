@@ -180,13 +180,12 @@ class RTSP(Thread):
                     for client in rtsp_clients:
                         try:
                             frame = CombineStreams(self.output_size, client[2][0], client[2][1], self.streams)
-                            
-                            im = Image.fromarray(frame.astype("uint8"))
-                            rawBytes = io.BytesIO()
-                            im.save(rawBytes, "PNG")
-                            rawBytes.seek(0)  # return to the start of the file
 
-                            client[0].sendall(struct.pack("L", rawBytes.getbuffer().nbytes)+rawBytes.getvalue())
+                            b64 = "data:image/jpeg;base64," + str(base64.b64encode(cv2.imencode(".jpg", frame)[1].tobytes()))[2:-1]
+                            
+                            b64Bytes = str.encode(b64)
+
+                            client[0].sendall(b64Bytes)
                         except Exception as err:
                             rtsp_clients.remove(client)
                             print ('Connection dropped: ', client[1], err)
