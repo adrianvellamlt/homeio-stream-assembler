@@ -1,7 +1,7 @@
 import socket
 from threading import Thread
 from sys import argv, platform
-from streamHandler import ReadWebcamOverIP, RTSP
+from streamHandler import ReadWebcamOverIP, TCP
 
 def main():
     if len(argv) < 4: 
@@ -17,14 +17,14 @@ def main():
         info = stream_info.split(":")
         webcam_streams.append((info[0], int(info[1])))
 
-    streamTasks = []
+    streams = { }
     for webcam_stream in webcam_streams:
         tsk = ReadWebcamOverIP(output_size, webcam_stream)
         tsk.start()
-        streamTasks.append(tsk)
+        streams[webcam_stream[0]+":"+str(webcam_stream[1])] = tsk
 
-    rtsp_tsk = RTSP(output_size, streamTasks, port)
-    rtsp_tsk.start()
+    tcp_tsk = TCP(output_size, streams, port)
+    tcp_tsk.start()
 
 if __name__ == "__main__":
     main()

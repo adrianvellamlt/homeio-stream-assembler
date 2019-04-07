@@ -13,7 +13,7 @@ from subprocess import run, PIPE
 from numpy import zeros, uint8, hstack, vstack
 
 server = None
-rtsp_clients = []
+tcp_clients = []
 
 def CombineStreams(output_size, columns, rows, streams):
     blankImg = zeros((output_size[0], output_size[1], 3), dtype=uint8)
@@ -60,7 +60,7 @@ class ReadWebcamOverIP(Thread):
         super(ReadWebcamOverIP, self).__init__(name = "Reading stream {ip}:{port}".format(ip=self.ip, port=self.port))
 
     def read(self): 
-        sleep(0.0005) # important for resource conservation
+        sleep(0.001) # important for resource conservation
         if self.imgToShow.shape[0] != self.output_size[0] or self.imgToShow.shape[1] != self.output_size[1]: 
             return cv2.resize(self.imgToShow, (self.output_size[1], self.output_size[0]))
         else: return self.imgToShow
@@ -120,26 +120,14 @@ class ReadWebcamOverIP(Thread):
                 self.imgToShow = self.offlineStreamImg
                 self.setup()
 
-def RTSP_Setup(port):
-    global server
-    address = socket.gethostbyname(socket.gethostname())
-    if address.startswith("127.") and (platform == "linux" or platform == "linux2"):
-        # if result is loopback and system is linux, get first name returned by 'hostname -I'
-        address = str(run("hostname -I", shell=True, stdout=PIPE).stdout).split(" ")[0]
-        address = address.replace("\\n", "").replace(" ", "")[2:]
-    print(address, port)
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind((address, port))
-    server.listen(10)
-
-class RTSP(Thread):
+class TCP(Thread):
     def __init__(self, output_size, streams, server_port):
         self.output_size = output_size
         self.streams = streams
         self.server_port = server_port
         self.lookupThread = None
         self.running = True
-        super(RTSP, self).__init__(name = "RTSP")
+        super(TCP, self).__init__(name = "TCP")
 
     def stop(self): 
         self.running = False
@@ -158,61 +146,87 @@ class RTSP(Thread):
         server.bind((address, self.server_port))
         server.listen(10)
 
-        self.lookupThread = RTSPClientLookup()
+        self.lookupThread = TCPClientLookup()
         self.lookupThread.start()
 
     def teardown(self):
         global server
-        global rtsp_clients
+        global tcp_clients
 
         self.lookupThread.stop()
-        for client in rtsp_clients:
+        for client in tcp_clients:
             client[0].close()
         server.close()
 
     def run(self):
-        global rtsp_clients
+        global tcp_clients
 
         try:
             while self.running:
                 self.setup()
                 while self.running:
-                    for client in rtsp_clients:
+                    for client in tcp_clients:
                         try:
-                            frame = CombineStreams(self.output_size, client[2][0], client[2][1], self.streams)
+                            clientStreams = client[2][2]
+                            streamsToCombine = []
+                            for clientStream in clientStreams:
+                                if clientStream in self.streams: streamsToCombine.append(self.streams[clientStream])
 
-                            b64 = "data:image/jpeg;base64," + str(base64.b64encode(cv2.imencode(".jpg", frame)[1].tobytes()))[2:-1]
-                            
-                            b64Bytes = str.encode(b64)
+                            if (len(streamsToCombine) > 0):
+                                frame = CombineStreams(self.output_size, client[2][0], client[2][1], streamsToCombine)
 
-                            client[0].sendall(b64Bytes)
+                                b64 = "data:image/jpeg;base64," + str(base64.b64encode(cv2.imencode(".jpg", frame)[1].tobytes()))[2:-1]
+                                
+                                b64Bytes = str.encode(b64)
+
+                                client[0].sendall(b64Bytes)
                         except Exception as err:
-                            rtsp_clients.remove(client)
+                            tcp_clients.remove(client)
                             print ('Connection dropped: ', client[1], err)
                             client[0].close()
+                            
+                        sleep(0.001) # important for resource conservation
                 self.teardown()
         except Exception as err:
-            print("RTSP Thread stopped:", str(err))
+            print("TCP Thread stopped:", str(err))
 
-class RTSPClientLookup(Thread):
+# Clients for the TCP Client to send and receive data from
+class TCPClientLookup(Thread):
     def __init__(self):
         self.running = True
-        super(RTSPClientLookup, self).__init__(name = "RTSP Client Lookup")
+        super(TCPClientLookup, self).__init__(name = "TCP Client Lookup")
 
     def stop(self): self.running = False
 
+    def recvAll(self, conn):
+        char = b' '
+        buffer = b''
+        while char != b'\r':
+            char = conn.recv(1)
+            buffer = buffer + char
+        return buffer.decode("utf-8")[:-1]
+
     def run(self):
         global server
-        global rtsp_clients
+        global tcp_clients
 
         try:
             while self.running:
                 try:
-                    if len(rtsp_clients) <= 5:
+                    if len(tcp_clients) <= 5:
                         conn, addr = server.accept()
                         print("Connection established to:", addr)
-                        rtsp_clients.append((conn, addr, (2, 2)))
-                except:
+
+                        print("Waiting for client settings")
+                        clientSettings = self.recvAll(conn)
+                        settingSegments = clientSettings.split("|")
+                        print("Client settings received")
+
+                        streams = settingSegments[0].split(",")
+                        grid = settingSegments[1].split("x")
+                        
+                        tcp_clients.append((conn, addr, (int(grid[0]), int(grid[1]), streams)))
+                except Exception as err:
                     print("Server connection dropped")
         except Exception as err:
-            print("RTSP Client Lookup Thread stopped:", str(err))
+            print("TCP Client Lookup Thread stopped:", str(err))
