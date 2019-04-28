@@ -1,6 +1,5 @@
-import socket
 from threading import Thread
-from sys import argv, platform
+from sys import argv
 from streamHandler import ReadWebcamOverIP, TCP
 
 def main():

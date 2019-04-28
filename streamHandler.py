@@ -8,7 +8,6 @@ import base64
 from time import sleep
 from sys import platform
 from threading import Thread
-from subprocess import run, PIPE
 from numpy import zeros, uint8, hstack, vstack
 
 server = None
@@ -133,16 +132,9 @@ class TCP(Thread):
 
     def setup(self):
         global server
-
-        address = socket.gethostbyname(socket.gethostname())
-        if address.startswith("127.") and (platform == "linux" or platform == "linux2"):
-            # if result is loopback and system is linux, get first name returned by 'hostname -I'
-            address = str(run("hostname -I", shell=True, stdout=PIPE).stdout).split(" ")[0]
-            address = address.replace("\\n", "").replace(" ", "")[2:]
         
-        print(address, self.server_port)
         server = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        server.bind((address, self.server_port))
+        server.bind(("", self.server_port))
         server.listen(10)
 
         self.lookupThread = TCPClientLookup()
