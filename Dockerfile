@@ -60,4 +60,5 @@ EXPOSE 8080
 CMD ["python3", "-u", "./__main__.py", "8080", "480x640", "127.0.0.1:8089"]
 
 # docker build --tag streamassembler homeio-stream-assembler/.
-# docker run -d -p 8089:8089 -e "HOSTNAME=$(hostname -I | awk '{ print $1 }')"
+# docker run -d -p 8080:8080 -e streamassembler
+# still have to figure out initial ip init

@@ -5,7 +5,6 @@ import socket
 import struct
 import pickle
 import base64
-from PIL import Image
 from time import sleep
 from sys import platform
 from threading import Thread
