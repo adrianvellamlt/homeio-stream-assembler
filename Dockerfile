@@ -57,7 +57,7 @@ COPY /* /
 
 EXPOSE 8080
 
-CMD ["python3", "-u", "./__main__.py"]
+CMD ["python3", "-u", "./__main__.py", "8080", "480x640", "127.0.0.1:8089"]
 
-# docker build --tag woip homeio-webcam-over-ip/.
-# docker run -d -p 8089:8089 -e "HOSTNAME=$(hostname -I | awk '{ print $1 }')" --device=/dev/video0 woip
+# docker build --tag streamassembler homeio-stream-assembler/.
+# docker run -d -p 8089:8089 -e "HOSTNAME=$(hostname -I | awk '{ print $1 }')"
