@@ -8,6 +8,7 @@ import base64
 from time import sleep
 from sys import platform
 from threading import Thread
+from collections import namedtuple
 from numpy import zeros, uint8, hstack, vstack
 
 server = None
@@ -58,7 +59,7 @@ class ReadWebcamOverIP(Thread):
         super(ReadWebcamOverIP, self).__init__(name = "Reading stream {ip}:{port}".format(ip=self.ip, port=self.port))
 
     def read(self): 
-        sleep(0.001) # important for resource conservation
+        sleep(0.01) # important for resource conservation
         if self.imgToShow.shape[0] != self.output_size[0] or self.imgToShow.shape[1] != self.output_size[1]: 
             return cv2.resize(self.imgToShow, (self.output_size[1], self.output_size[0]))
         else: return self.imgToShow
@@ -152,31 +153,50 @@ class TCP(Thread):
     def run(self):
         global tcp_clients
 
+        ConnectionInfo = namedtuple("ConnectionInfo", ["conn", "address"])
+        FrameInfo = namedtuple("FrameInfo", ["gridX", "gridY", "streams"])
+
         try:
             while self.running:
                 self.setup()
                 while self.running:
+                    if len (tcp_clients) < 1:
+                        sleep(1)
+                        continue
+
+                    framesToGenerate = {}
                     for client in tcp_clients:
-                        try:
-                            clientStreams = client[2][2]
-                            streamsToCombine = []
-                            for clientStream in clientStreams:
-                                if clientStream in self.streams: streamsToCombine.append(self.streams[clientStream])
+                        
+                        clientConn = ConnectionInfo(conn = client[0], address = client[1])
 
-                            if (len(streamsToCombine) > 0):
-                                frame = CombineStreams(self.output_size, client[2][0], client[2][1], streamsToCombine)
+                        frameInfo = FrameInfo(gridX = client[2][0], gridY = client[2][1], streams = client[2][2])
 
-                                b64 = "data:image/jpeg;base64," + str(base64.b64encode(cv2.imencode(".jpg", frame)[1].tobytes()))[2:-1]
-                                
-                                b64Bytes = str.encode(b64)
+                        if frameInfo not in framesToGenerate:
+                            framesToGenerate[frameInfo] = [clientConn]
+                        else:
+                            framesToGenerate[frameInfo].append(clientConn)
 
-                                client[0].sendall(b64Bytes)
-                        except Exception as err:
-                            tcp_clients.remove(client)
-                            print ('Connection dropped: ', client[1], err)
-                            client[0].close()
+                    for frameInfo in framesToGenerate:
+                        streamsToCombine = []
+                        for clientStream in frameInfo.streams.split(","):
+                            if clientStream in self.streams: streamsToCombine.append(self.streams[clientStream])
+
+                        if len(streamsToCombine) > 0:
+                            frame = CombineStreams(self.output_size, frameInfo.gridX, frameInfo.gridY, streamsToCombine)
                             
-                        sleep(0.001) # important for resource conservation
+                            b64 = "data:image/jpeg;base64," + str(base64.b64encode(cv2.imencode(".jpg", frame)[1].tobytes()))[2:-1]
+                                    
+                            b64Bytes = str.encode(b64)
+
+                            for clientConn in framesToGenerate[frameInfo]:
+                                try:
+                                    clientConn.conn.sendall(b64Bytes)
+                                except Exception as err:
+                                    tcp_clients.remove((clientConn.conn, clientConn.address, (frameInfo.gridX, frameInfo.gridY, frameInfo.streams)))
+                                    print ('Connection dropped: ', clientConn.address, err)
+                                    client[0].close()         
+                        
+                        sleep(0.01) # important for resource conservation
                 self.teardown()
         except Exception as err:
             print("TCP Thread stopped:", str(err))
@@ -213,7 +233,7 @@ class TCPClientLookup(Thread):
                         settingSegments = clientSettings.split("|")
                         print("Client settings received")
 
-                        streams = settingSegments[0].split(",")
+                        streams = settingSegments[0]
                         grid = settingSegments[1].split("x")
                         
                         tcp_clients.append((conn, addr, (int(grid[0]), int(grid[1]), streams)))
