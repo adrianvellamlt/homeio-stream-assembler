@@ -154,7 +154,7 @@ class TCP(Thread):
         global tcp_clients
 
         ConnectionInfo = namedtuple("ConnectionInfo", ["conn", "address"])
-        FrameInfo = namedtuple("FrameInfo", ["gridX", "gridY", "streams"])
+        FrameInfo = namedtuple("FrameInfo", ["rows", "columns", "streams"])
 
         try:
             while self.running:
@@ -169,7 +169,7 @@ class TCP(Thread):
                         
                         clientConn = ConnectionInfo(conn = client[0], address = client[1])
 
-                        frameInfo = FrameInfo(gridX = client[2][0], gridY = client[2][1], streams = client[2][2])
+                        frameInfo = FrameInfo(rows = client[2][0], columns = client[2][1], streams = client[2][2])
 
                         if frameInfo not in framesToGenerate:
                             framesToGenerate[frameInfo] = [clientConn]
@@ -182,7 +182,7 @@ class TCP(Thread):
                             if clientStream in self.streams: streamsToCombine.append(self.streams[clientStream])
 
                         if len(streamsToCombine) > 0:
-                            frame = CombineStreams(self.output_size, frameInfo.gridX, frameInfo.gridY, streamsToCombine)
+                            frame = CombineStreams(self.output_size, frameInfo.columns, frameInfo.rows, streamsToCombine)
                             
                             b64 = "data:image/jpeg;base64," + str(base64.b64encode(cv2.imencode(".jpg", frame)[1].tobytes()))[2:-1]
                                     
@@ -192,7 +192,7 @@ class TCP(Thread):
                                 try:
                                     clientConn.conn.sendall(b64Bytes)
                                 except Exception as err:
-                                    tcp_clients.remove((clientConn.conn, clientConn.address, (frameInfo.gridX, frameInfo.gridY, frameInfo.streams)))
+                                    tcp_clients.remove((clientConn.conn, clientConn.address, (frameInfo.rows, frameInfo.columns, frameInfo.streams)))
                                     print ('Connection dropped: ', clientConn.address, err)
                                     client[0].close()         
                         
