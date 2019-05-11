@@ -1,20 +1,21 @@
+from os import environ
 from threading import Thread
-from sys import argv
+from socket import gethostbyname
 from streamHandler import ReadWebcamOverIP, TCP
 
 def main():
-    if len(argv) < 4: 
-        raise Exception("At least a port, an output_size and one ip:port are required.")
-    
-    port = int(argv[1])
 
-    output_size = argv[2].split("x")
+    print(environ["PORT"], environ["STREAM_SIZE"], environ["STREAM_IPS"])
+
+    port = int(environ["PORT"])
+
+    output_size = environ["STREAM_SIZE"].split("x")
     output_size = (int(output_size[0]), int(output_size[1]))
 
     webcam_streams = []
-    for stream_info in argv[3:]:
+    for stream_info in environ["STREAM_IPS"].split(","):
         info = stream_info.split(":")
-        webcam_streams.append((info[0], int(info[1])))
+        webcam_streams.append((gethostbyname(info[0]), int(info[1])))
 
     streams = { }
     for webcam_stream in webcam_streams:

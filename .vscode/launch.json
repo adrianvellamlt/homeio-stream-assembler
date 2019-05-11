@@ -10,11 +10,12 @@
             "request": "launch",
             "program": "${workspaceFolder}/__main__.py",
             "console": "integratedTerminal",
-            "args": [ 
-                "8080",
-                "480x640",
-                "10.0.75.1:8089"
-            ]
+            "args": [ ],
+            "env": {
+                "PORT": "8080",
+                "STREAM_SIZE": "480x640",
+                "STREAM_IPS": "raspitwo:8089,raspithree:8089,raspifour:8089"
+            }
         }
     ]
 }

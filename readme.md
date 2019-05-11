@@ -2,18 +2,23 @@
 
 A socket server that sends a combined stream of all available webcam streams on the network to its subscribed clients. The client can request for any combination of the webcam streams or even just one and this program will generate the frame and send it to the client.
 
-To run, specify the port you want the application to broadcast the stream on, the output size of the stream and any number of IPs that are streaming on the same network.
+To run the following environment variables are required: 
+- the port you want the application to broadcast the stream on, 
+- the output size of the stream
+- any number of IPs that are streaming on the same network.
 
 This application has been developed to run in sync with the [webcam-over-ip](https://github.com/adrianvellamlt/webcam-over-ip) code base.
 
 ```
 Invoke:
 
-python stream-assembler {port} {height}x{width} {webcam-n-ip}:{webcam-n-port} ...
+python stream-assembler
 
-Example:
+Env Variables:
 
-python stream-assembler 8080 480x640 192.168.1.98:8089 198.168.1.99:8089
+PORT: 8080 
+STREAM_SIZE: 480x640
+STREAM_IPS: hostname1:8089,hostname2:8089
 ```
 
 ## Notes:
