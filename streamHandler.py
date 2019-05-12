@@ -14,6 +14,7 @@ from numpy import zeros, uint8, hstack, vstack
 server = None
 tcp_clients = []
 
+# combines streams into the specified grid and returns an image/ frame.
 def CombineStreams(output_size, columns, rows, streams):
     blankImg = zeros((output_size[0], output_size[1], 3), dtype=uint8)
 
@@ -39,6 +40,7 @@ def CombineStreams(output_size, columns, rows, streams):
 
     return cv2.resize(combinedImg, (output_size[1], output_size[0]))
 
+# reads frames from webcams over ip. (homeio-webcam-over-ip)
 class ReadWebcamOverIP(Thread):
     def __init__(self, output_size, ip_port):
         self.ip = ip_port[0]
@@ -58,8 +60,7 @@ class ReadWebcamOverIP(Thread):
 
         super(ReadWebcamOverIP, self).__init__(name = "Reading stream {ip}:{port}".format(ip=self.ip, port=self.port))
 
-    def read(self): 
-        sleep(0.01) # important for resource conservation
+    def read(self):
         if self.imgToShow.shape[0] != self.output_size[0] or self.imgToShow.shape[1] != self.output_size[1]: 
             return cv2.resize(self.imgToShow, (self.output_size[1], self.output_size[0]))
         else: return self.imgToShow
@@ -88,6 +89,8 @@ class ReadWebcamOverIP(Thread):
             if self.clientsocket is not None:
                 try:
                     while self.running:
+                        sleep(0.03)
+                        # fill buffer up to payload size
                         emptyResponses = 0
                         while len(data) < payload_size:
                             response = self.clientsocket.recv(4096)
@@ -98,27 +101,37 @@ class ReadWebcamOverIP(Thread):
                                     break
                             else: emptyResponses = 0
                             data += response
+
+                        # if client socket, teardown and start again
                         if self.clientsocket is None: 
                             break
                         else:
+                            # get packed message size
                             packed_msg_size = data[:payload_size]
 
+                            # get message without size prefix
                             data = data[payload_size:]
+
+                            # unpack msg size prefix
                             msg_size = struct.unpack("L", packed_msg_size)[0]
 
+                            # read data until msg size is read
                             while len(data) < msg_size:
                                 data += self.clientsocket.recv(4096)
 
+                            # slice msg size from data to form a frame
                             frame_data = data[:msg_size]
                             data = data[msg_size:]
 
                             self.imgToShow = pickle.loads(frame_data)
                 except:
-                    self.clientsocket = None
+                    # tearing down. if thread is still running, we will setup again (hence reconnecting).
+                    self.teardown()
             else:
                 self.imgToShow = self.offlineStreamImg
                 self.setup()
 
+# tcp server that sends data to one or more clients
 class TCP(Thread):
     def __init__(self, output_size, streams, server_port):
         self.output_size = output_size
@@ -160,48 +173,63 @@ class TCP(Thread):
             while self.running:
                 self.setup()
                 while self.running:
+                    # if we have no client, wait for 1 second and try again
                     if len (tcp_clients) < 1:
                         sleep(1)
                         continue
 
+                    # get image combinations to generate from tcp_clients
                     framesToGenerate = {}
                     for client in tcp_clients:
                         
+                        # client connection and address
                         clientConn = ConnectionInfo(conn = client[0], address = client[1])
 
+                        # streams and output stream grid info
                         frameInfo = FrameInfo(rows = client[2][0], columns = client[2][1], streams = client[2][2])
 
+                        # add to dictionary. this way a unique image is generate only once for multiple clients
                         if frameInfo not in framesToGenerate:
                             framesToGenerate[frameInfo] = [clientConn]
                         else:
                             framesToGenerate[frameInfo].append(clientConn)
 
+                    # iterate over unique images to generate
                     for frameInfo in framesToGenerate:
+                        # streams that streamassembler has access and is connected to.
+                        # this filters out streams that are not valid. instead of sending back bad request.
                         streamsToCombine = []
                         for clientStream in frameInfo.streams.split(","):
                             if clientStream in self.streams: streamsToCombine.append(self.streams[clientStream])
 
+                        # if any valid streams
                         if len(streamsToCombine) > 0:
+                            # generate frame
                             frame = CombineStreams(self.output_size, frameInfo.columns, frameInfo.rows, streamsToCombine)
                             
+                            # convert to base64
                             b64 = "data:image/jpeg;base64," + str(base64.b64encode(cv2.imencode(".jpg", frame)[1].tobytes()))[2:-1]
-                                    
+                            
+                            # encode it to byte arr
                             b64Bytes = str.encode(b64)
 
+                            # send it to all clients that requested this image
                             for clientConn in framesToGenerate[frameInfo]:
                                 try:
                                     clientConn.conn.sendall(b64Bytes)
                                 except Exception as err:
                                     tcp_clients.remove((clientConn.conn, clientConn.address, (frameInfo.rows, frameInfo.columns, frameInfo.streams)))
                                     print ('Connection dropped: ', clientConn.address, err)
-                                    client[0].close()         
-                        
-                        sleep(0.01) # important for resource conservation
+                                    client[0].close()
+                
+                # if not running any more or unhandled exception occurred, teardown.
+                # if still running, we will setup again. (clears connections)
                 self.teardown()
         except Exception as err:
             print("TCP Thread stopped:", str(err))
 
-# Clients for the TCP Client to send and receive data from
+# clients for the TCP Client to send and receive data from
+# should be a different permutation of a stream combination
 class TCPClientLookup(Thread):
     def __init__(self):
         self.running = True
