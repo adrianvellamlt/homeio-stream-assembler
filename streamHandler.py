@@ -16,7 +16,10 @@ tcp_clients = []
 
 # combines streams into the specified grid and returns an image/ frame.
 def CombineStreams(output_size, columns, rows, streams):
-    blankImg = zeros((output_size[0], output_size[1], 3), dtype=uint8)
+    boxWidth = output_size[1] // columns
+    boxHeight = output_size[0] // rows
+
+    blankImg = zeros((boxHeight, boxWidth, 3), dtype=uint8)
 
     current_stream = 0
 
@@ -25,7 +28,7 @@ def CombineStreams(output_size, columns, rows, streams):
         combinedRow = None
 
         for row_indx in range(rows):
-            stream = blankImg if current_stream > (len(streams) - 1) else streams[current_stream].read()
+            stream = blankImg if current_stream > (len(streams) - 1) else cv2.resize(streams[current_stream].read(), (boxWidth, boxHeight))
             cv2.rectangle(stream, (0, 0), (stream.shape[1], stream.shape[0]), (255, 255, 255), 2)
             if combinedRow is None:
                 combinedRow = stream
